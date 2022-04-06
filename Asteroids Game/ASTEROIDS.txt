@@ -1,0 +1,404 @@
+"""
+File: asteroids.py  DONT FORGET TO CHANGE YOUR GLOBAL VARIALBES!!!
+This program implements the asteroids game.
+"""
+# things to fix: slow bullet, break rock in halves
+import math
+import random
+import arcade
+from abc import ABC
+from abc import abstractmethod
+
+# These are Global constants to use throughout the game
+SCREEN_WIDTH = 1000 #changed from 800
+SCREEN_HEIGHT = 600 #changed from 600
+
+BULLET_RADIUS = 15 #changed from 30
+BULLET_SPEED = 10
+BULLET_LIFE = 60
+
+SHIP_TURN_AMOUNT = 3
+SHIP_THRUST_AMOUNT = 2 #changed from 0.25????
+SHIP_RADIUS = 30
+
+INITIAL_ROCK_COUNT = 5
+
+BIG_ROCK_SPIN = 1
+BIG_ROCK_SPEED = 1.5
+BIG_ROCK_RADIUS = 30
+
+MEDIUM_ROCK_SPIN = -2
+MEDIUM_ROCK_RADIUS = 10 #changed from 5
+
+SMALL_ROCK_SPIN = 5
+SMALL_ROCK_RADIUS = 5 #changed from 2
+
+class Point:
+    def __init__(self):
+        self.x = 0.0
+        self.y = 0.0
+
+class Velocity:
+    def __init__(self):
+        self.dx = 0.0
+        self.dy = 0.0
+
+class FlyingObject(ABC):
+
+    def __init__(self):
+        self.center = Point()
+        self.velocity = Velocity()
+        self.alive = True
+        self.speed = 0
+        self.radius = 0
+        self.angle = 0
+
+    def advance(self):
+        self.center.x += self.velocity.dx
+        self.center.y += self.velocity.dy
+        self.wrap_screen()  #to be called always in advance
+
+    def wrap_screen(self):
+        if self.center.x > SCREEN_WIDTH:
+            self.center.x = 0
+        elif self.center.x < 0:
+            self.center.x = SCREEN_WIDTH 
+        elif self.center.y > SCREEN_HEIGHT:
+            self.center.y = 0 
+        elif self.center.y < 0:
+            self.center.y = SCREEN_HEIGHT
+
+    @abstractmethod
+    def draw():
+        pass
+
+class Ship(FlyingObject):
+    def __init__(self):
+        super(). __init__()
+        self.center.x = 400
+        self.center.y = 300
+
+        self.radius = SHIP_RADIUS
+
+    def draw(self):
+        texture = arcade.load_texture("ship.png")
+        arcade.draw_texture_rectangle(self.center.x,self.center.y,self.radius*2,self.radius*2,texture,self.angle)
+
+    def thrust(self,angle):
+        angle += 90
+        self.velocity.dx = math.cos(math.radians(angle)) * SHIP_THRUST_AMOUNT
+        self.velocity.dy = math.sin(math.radians(angle)) * SHIP_THRUST_AMOUNT
+
+    def turn_right(self):
+        self.angle -= 3
+
+    def turn_left(self):
+        self.angle += 3
+
+class Bullet(FlyingObject):
+    def __init__(self,ship):
+        super(). __init__()
+        self.center.x = ship.center.x
+        self.center.y = ship.center.y
+        self.lives_span = 60 #60frames
+        self.radius = BULLET_RADIUS
+        self.angle = ship.angle + 90
+
+    def draw(self):
+        texture = arcade.load_texture("laser.png")
+        arcade.draw_texture_rectangle(self.center.x,self.center.y,self.radius*2,self.radius,texture,self.angle)
+        self.lives_span -= 1
+        if self.lives_span == 0:
+            self.alive = False
+
+    #added function
+    def fire(self):
+        #set velocities #ANGLE SHOULD MATCH SHIP ANGLE
+        self.velocity.dx = math.cos(math.radians(self.angle)) * BULLET_SPEED
+        self.velocity.dy = math.sin(math.radians(self.angle)) * BULLET_SPEED
+
+class Rock(FlyingObject,ABC):
+    def __init__(self):
+        super(). __init__()
+    
+    @abstractmethod
+    def draw(self):
+        pass
+    
+    @abstractmethod
+    def hit(self):
+        pass
+class BigRock(Rock):
+    def __init__(self):
+        super(). __init__()
+        #appear random in a portion of screen
+        self.center.x = random.choice([random.uniform(0,300),random.uniform(500,800)])
+        self.center.y = random.choice([random.uniform(0,200), random.uniform(350,500)])
+        #defined radius
+        self.radius = BIG_ROCK_RADIUS
+        self.angle = random.uniform(0,360)
+        #start moving
+        self.velocity.dx = math.cos(math.radians(self.angle)) * BIG_ROCK_SPEED
+        self.velocity.dy = math.sin(math.radians(self.angle)) * BIG_ROCK_SPEED
+
+    def draw(self):
+        #spin 
+        self.angle += 1
+        texture = arcade.load_texture("big.png")
+        arcade.draw_texture_rectangle(self.center.x,self.center.y,self.radius*2,self.radius*2,texture,self.angle)
+
+    def hit(self):
+        self.alive = False
+        return [MediumRock(self.center.x,self.center.y,self.velocity.dx,self.velocity.dy+2),
+                MediumRock(self.center.x,self.center.y,self.velocity.dx,self.velocity.dy-2),
+                SmallRock(self.center.x,self.center.y,self.velocity.dx+5,self.velocity.dy)]
+
+class MediumRock(Rock):
+    def __init__(self,x,y,dx,dy):
+        super(). __init__()
+        #appear random
+        self.center.x = x
+        self.center.y = y 
+        #defined radius
+        self.radius = MEDIUM_ROCK_RADIUS
+
+        self.velocity.dx = dx
+        self.velocity.dy = dy
+    def draw(self):
+        self.angle += 2
+        texture = arcade.load_texture("medium.png")
+        arcade.draw_texture_rectangle(self.center.x,self.center.y,self.radius*2,self.radius*2,texture,self.angle)
+
+    def hit(self):
+        self.alive = False
+        return[SmallRock(self.center.x,self.center.y,self.velocity.dx + 1.5,self.velocity.dy + 1.5),
+                SmallRock(self.center.x,self.center.y,self.velocity.dx - 1.5,self.velocity.dy - 1.5)]
+
+class SmallRock(Rock):
+    def __init__(self,x,y,dx,dy):
+        super(). __init__()
+        #appear random
+        self.center.x = x
+        self.center.y = y
+        #defined radius
+        self.radius = SMALL_ROCK_RADIUS
+
+        self.velocity.dx = dx
+        self.velocity.dy = dy
+    def draw(self):
+        texture = arcade.load_texture("small.png")
+        arcade.draw_texture_rectangle(self.center.x,self.center.y,self.radius*2,self.radius*2,texture)
+
+    def hit(self):
+        self.alive = False
+        return []
+
+# Star Class
+class Star:
+    def __init__(self):
+        self.x = random.randrange(SCREEN_WIDTH)
+        self.y = random.randrange(SCREEN_HEIGHT)
+        self.radius = random.randrange(1, 4)
+    
+    def draw(self):
+        brightness = random.randrange(127, 256)
+        color = (brightness, brightness, brightness) #three levels of brightness
+        arcade.draw_rectangle_filled(self.x, self.y, self.radius, self.radius, color)
+
+class Explosion():
+
+    def __init__(self,ship):
+        
+        self.x = ship.center.x
+        self.y = ship.center.y
+        self.radius = 60
+        self.lives_span = 5
+
+    def draw(self):
+
+        texture = arcade.load_texture("pum.png")
+        arcade.draw_texture_rectangle(self.x,self.y,self.radius*2,self.radius*2,texture)
+        self.lives_span -= 1
+        if self.lives_span == 0:
+            self.alive = False
+
+class Game(arcade.Window):
+    """
+    This class handles all the game callbacks and interaction
+    This class will then call the appropriate functions of
+    each of the above classes.
+    You are welcome to modify anything in this class.
+    """
+
+    def __init__(self, width, height):
+        """
+        Sets up the initial conditions of the game
+        :param width: Screen width
+        :param height: Screen height
+        """
+        super().__init__(width, height)
+        #initializing stars
+        self.stars = []
+        for n in range(200):
+            self.stars.append(Star())
+
+        #Background
+        arcade.set_background_color(arcade.color.SMOKY_BLACK)
+
+        self.held_keys = set()
+
+        # TODO: declare anything here you need the game class to track
+
+        #declaring ship
+        self.ship = Ship()
+        #list for bullets
+        self.bullets = []
+        #list for rocks
+        self.rocks = []
+        for n in range(INITIAL_ROCK_COUNT): #only 5 rocks
+            self.rocks.append(BigRock())
+
+        #Explosion
+        self.explosions = []
+
+    def on_draw(self):
+        """
+        Called automatically by the arcade framework.
+        Handles the responsibility of drawing all elements.
+        """
+
+        # clear the screen to begin drawing
+        arcade.start_render()
+        #draw stars
+        for star in self.stars:
+            star.draw()
+
+        # TODO: draw each object
+        self.ship.draw()
+        #iterate tru rocks
+        for rock in self.rocks:
+            rock.draw()
+        #iterate tru bullets, why I can't see the bullets?
+        for bullet in self.bullets:
+            bullet.draw()
+
+        #draw explosions
+        for explosion in self.explosions:
+            explosion.draw()
+
+    def update(self, delta_time):
+        """
+        Update each object in the game.
+        :param delta_time: tells us how much time has actually elapsed
+        """
+        self.check_keys()
+        self.check_collisions()
+        # TODO: Tell everything to advance or move forward one step in time
+        self.ship.advance()
+
+        for rock in self.rocks:
+            rock.advance()
+
+        for bullet in self.bullets:
+            bullet.advance()
+        # TODO: Check for collisions
+
+    def check_keys(self):
+        """
+        This function checks for keys that are being held down.
+        You will need to put your own method calls in here.
+        """
+        if arcade.key.LEFT in self.held_keys:
+            self.ship.turn_left()
+
+        if arcade.key.RIGHT in self.held_keys:
+            self.ship.turn_right()
+
+        if arcade.key.UP in self.held_keys:
+            self.ship.thrust(self.ship.angle)
+
+        if arcade.key.DOWN in self.held_keys:
+            pass
+
+        # Machine gun mode...
+        #if arcade.key.SPACE in self.held_keys:
+        #    pass
+
+
+    def on_key_press(self, key: int, modifiers: int):
+        """
+        Puts the current key in the set of keys that are being held.
+        You will need to add things here to handle firing the bullet.
+        """
+        if self.ship.alive:
+            self.held_keys.add(key)
+
+            if key == arcade.key.SPACE:
+                # TODO: Fire the bullets here!
+
+                bullet = Bullet(self.ship)
+                bullet.fire()
+
+                self.bullets.append(bullet)
+
+    def on_key_release(self, key: int, modifiers: int):
+        """
+        Removes the current key from the set of held keys.
+        """
+        if key in self.held_keys:
+            self.held_keys.remove(key)
+
+    def check_collisions(self):
+        """
+        Checks to see if bullets have hit targets.
+        Updates scores and removes dead items.
+        :return:
+        """
+
+        for rock in self.rocks:
+            if rock.alive and self.ship.alive: 
+                too_close_rock = rock.radius + self.ship.radius
+                if (abs(rock.center.x - self.ship.center.x) < too_close_rock and
+                            abs(rock.center.y - self.ship.center.y) < too_close_rock):
+                            self.ship.radius = 0
+                            self.ship.velocity.dx = 0
+                            self.ship.velocity.dy = 0
+                            explosion = Explosion(self.ship)
+                            explosion.draw()
+                            self.explosions.append(explosion)
+
+            for bullet in self.bullets:
+                # Make sure they are both alive before checking for a collision
+                if bullet.alive and rock.alive:
+                    too_close_bullet = bullet.radius + rock.radius
+
+                    if (abs(bullet.center.x - rock.center.x) < too_close_bullet and
+                                abs(bullet.center.y - rock.center.y) < too_close_bullet):
+                        # its a hit!
+                        bullet.alive = False
+                        #divide!
+                        self.rocks.extend(rock.hit())
+                        # We will wait to remove the dead objects until after we
+                        # finish going through the list
+
+        # Now, check for anything that is dead, and remove it
+        self.cleanup()
+
+    def cleanup(self):
+        """
+        Removes any dead bullets or rocks from the list.
+        :return:
+        """
+        for bullet in self.bullets:
+            if not bullet.alive:
+                self.bullets.remove(bullet)
+
+        for rock in self.rocks:
+            if not rock.alive:
+                self.rocks.remove(rock)
+    
+        
+
+# Creates the game and starts it going
+window = Game(SCREEN_WIDTH, SCREEN_HEIGHT)
+arcade.run()
