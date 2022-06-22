@@ -30,4 +30,4 @@ root                    (project root folder)
 
 ## Authors
 ---
-* Matt Manley (manleym@byui.edu)
+* Christian Mijangos (mij17001@byui.edu)
